@@ -118,7 +118,7 @@ app.post('/api/jetblog', (req, res) => {
 
 // ── SPA fallback: all other routes → index.html ───────────────────────────────
 if (fs.existsSync(DIST_DIR)) {
-  app.get('*', (_req, res) => {
+  app.use((_req, res) => {
     res.sendFile(path.join(DIST_DIR, 'index.html'));
   });
 }
