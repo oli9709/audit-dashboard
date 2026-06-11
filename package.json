@@ -5,20 +5,29 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "webhook": "node server/jetblog.js",
+    "dev:all": "concurrently \"npm run dev\" \"npm run webhook\"",
     "build": "tsc -b && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
   },
+
   "dependencies": {
     "clsx": "^2.0.0",
+    "concurrently": "^10.0.3",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
     "framer-motion": "^10.16.4",
     "lucide-react": "^0.320.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-router-dom": "^7.17.0",
     "recharts": "^2.10.4",
     "tailwind-merge": "^2.2.1"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
     "@typescript-eslint/eslint-plugin": "^6.14.0",
