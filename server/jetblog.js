@@ -7,11 +7,11 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
-const PORT = process.env.JETBLOG_PORT || 3001;
+const PORT = process.env.PORT || process.env.JETBLOG_PORT || 3001;
 
 app.use(cors({ origin: '*' }));
 
-// Raw body capture for HMAC verification
+// Raw body capture for HMAC verification — MUST be before express.json()
 app.use('/api/jetblog', (req, _res, next) => {
   let data = '';
   req.on('data', chunk => { data += chunk.toString(); });
@@ -20,7 +20,16 @@ app.use('/api/jetblog', (req, _res, next) => {
 
 app.use(express.json());
 
-// ── Storage helpers ──────────────────────────────────────────────────────────
+// ── Serve built frontend (dist/) ──────────────────────────────────────────────
+const DIST_DIR = path.resolve(__dirname, '../dist');
+if (fs.existsSync(DIST_DIR)) {
+  app.use(express.static(DIST_DIR));
+  console.log('📁 Serving frontend from dist/');
+}
+
+// ── Storage helpers ───────────────────────────────────────────────────────────
+// On Render, use /tmp for writable storage (filesystem is ephemeral anyway)
+// Posts are served via /api/posts/* so frontend can reach them
 const POSTS_DIR = path.resolve(__dirname, '../public/posts');
 
 function ensureDir() {
@@ -37,25 +46,43 @@ function savePost(post) {
   fs.writeFileSync(path.join(POSTS_DIR, `${post.slug}.json`), JSON.stringify(post, null, 2));
   const index = readIndex();
   const i = index.findIndex(p => p.slug === post.slug);
-  const summary = { id: post.id, title: post.title, slug: post.slug, featuredImage: post.featuredImage, seoTitle: post.seoTitle, seoDescription: post.seoDescription, tags: post.tags, readTime: post.readTime, publishedAt: post.publishedAt, excerpt: post.excerpt };
+  const summary = {
+    id: post.id, title: post.title, slug: post.slug,
+    featuredImage: post.featuredImage, seoTitle: post.seoTitle,
+    seoDescription: post.seoDescription, tags: post.tags,
+    readTime: post.readTime, publishedAt: post.publishedAt, excerpt: post.excerpt
+  };
   if (i >= 0) index[i] = summary; else index.unshift(summary);
   fs.writeFileSync(path.join(POSTS_DIR, 'index.json'), JSON.stringify(index, null, 2));
 }
 
-// ── Utilities ────────────────────────────────────────────────────────────────
+// ── Utilities ─────────────────────────────────────────────────────────────────
 function generateSlug(title) {
-  return title.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-').replace(/-+/g, '-').substring(0, 80) + '-' + Date.now();
+  return title.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim()
+    .replace(/\s+/g, '-').replace(/-+/g, '-').substring(0, 80) + '-' + Date.now();
 }
 function stripHtml(html) { return html.replace(/<[^>]*>/g, '').trim(); }
-function calcReadTime(html) { return Math.max(1, Math.ceil(stripHtml(html).split(/\s+/).filter(Boolean).length / 200)); }
-
+function calcReadTime(html) {
+  return Math.max(1, Math.ceil(stripHtml(html).split(/\s+/).filter(Boolean).length / 200));
+}
 function verifySig(rawBody, header) {
   const secret = process.env.JETBLOG_SECRET || '206600d13c8fc54a0af76ecb44a49169ecf435fac6d9889b1443d76d4914659e';
   const expected = crypto.createHmac('sha256', secret).update(rawBody, 'utf-8').digest('hex');
   try { return crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(header, 'hex')); } catch { return false; }
 }
 
-// ── Routes ───────────────────────────────────────────────────────────────────
+// ── API: Posts (for frontend to fetch live posts) ─────────────────────────────
+app.get('/api/posts', (_req, res) => {
+  res.json(readIndex());
+});
+
+app.get('/api/posts/:slug', (req, res) => {
+  const f = path.join(POSTS_DIR, `${req.params.slug}.json`);
+  if (!fs.existsSync(f)) return res.status(404).json({ error: 'Not found' });
+  res.json(JSON.parse(fs.readFileSync(f, 'utf-8')));
+});
+
+// ── Webhook ───────────────────────────────────────────────────────────────────
 app.get('/api/jetblog', (_req, res) => res.json({ status: 'JetBlog webhook active' }));
 
 app.post('/api/jetblog', (req, res) => {
@@ -89,7 +116,16 @@ app.post('/api/jetblog', (req, res) => {
   return res.json({ received: true });
 });
 
+// ── SPA fallback: all other routes → index.html ───────────────────────────────
+if (fs.existsSync(DIST_DIR)) {
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(DIST_DIR, 'index.html'));
+  });
+}
+
 app.listen(PORT, () => {
   ensureDir();
-  console.log(`🚀 JetBlog webhook → http://localhost:${PORT}/api/jetblog`);
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`   Webhook: /api/jetblog`);
+  console.log(`   Posts API: /api/posts`);
 });

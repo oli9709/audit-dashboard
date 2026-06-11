@@ -26,19 +26,30 @@ export interface BlogPostSummary {
   excerpt: string;
 }
 
+// Use /api/posts on Render (live), fallback to static JSON locally
+const API_BASE = '/api/posts';
+
 export async function fetchPostIndex(): Promise<BlogPostSummary[]> {
   try {
-    const res = await fetch('/posts/index.json', { cache: 'no-store' });
-    if (!res.ok) return [];
-    return res.json();
+    // Try live API first (Render)
+    const res = await fetch(API_BASE, { cache: 'no-store' });
+    if (res.ok) return res.json();
+    // Fallback: static file (local dev)
+    const r2 = await fetch('/posts/index.json', { cache: 'no-store' });
+    if (!r2.ok) return [];
+    return r2.json();
   } catch { return []; }
 }
 
 export async function fetchPost(slug: string): Promise<BlogPost | null> {
   try {
-    const res = await fetch(`/posts/${slug}.json`, { cache: 'no-store' });
-    if (!res.ok) return null;
-    return res.json();
+    // Try live API first (Render)
+    const res = await fetch(`${API_BASE}/${slug}`, { cache: 'no-store' });
+    if (res.ok) return res.json();
+    // Fallback: static file (local dev)
+    const r2 = await fetch(`/posts/${slug}.json`, { cache: 'no-store' });
+    if (!r2.ok) return null;
+    return r2.json();
   } catch { return null; }
 }
 
