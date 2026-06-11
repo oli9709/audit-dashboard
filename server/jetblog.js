@@ -50,7 +50,7 @@ function stripHtml(html) { return html.replace(/<[^>]*>/g, '').trim(); }
 function calcReadTime(html) { return Math.max(1, Math.ceil(stripHtml(html).split(/\s+/).filter(Boolean).length / 200)); }
 
 function verifySig(rawBody, header) {
-  const secret = process.env.JETBLOG_SECRET || 'a395a8f5156931446367aa8dc822a325950905075378a98f9c3876a52b63e1e4';
+  const secret = process.env.JETBLOG_SECRET || '206600d13c8fc54a0af76ecb44a49169ecf435fac6d9889b1443d76d4914659e';
   const expected = crypto.createHmac('sha256', secret).update(rawBody, 'utf-8').digest('hex');
   try { return crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(header, 'hex')); } catch { return false; }
 }
