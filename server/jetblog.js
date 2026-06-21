@@ -66,7 +66,7 @@ function calcReadTime(html) {
   return Math.max(1, Math.ceil(stripHtml(html).split(/\s+/).filter(Boolean).length / 200));
 }
 function verifySig(rawBody, header) {
-  const secret = process.env.JETBLOG_SECRET || '7d357ff9875fd23dc78933bd6dbd1dac54e1418e7004ca6a54782909c45e2c06';
+  const secret = process.env.JETBLOG_SECRET || 'b1aa77385b1919cfa92fc80db53d725966060c35cf92154f6ab9297b0a17cdf9';
   const expected = crypto.createHmac('sha256', secret).update(rawBody, 'utf-8').digest('hex');
   try { return crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(header, 'hex')); } catch { return false; }
 }
