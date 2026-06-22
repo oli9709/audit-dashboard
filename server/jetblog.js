@@ -12,10 +12,14 @@ const PORT = process.env.PORT || process.env.JETBLOG_PORT || 3001;
 app.use(cors({ origin: '*' }));
 
 // Raw body capture for HMAC verification — MUST be before express.json()
-app.use('/api/jetblog', (req, _res, next) => {
-  let data = '';
-  req.on('data', chunk => { data += chunk.toString(); });
-  req.on('end', () => { req.rawBody = data; next(); });
+app.use((req, _res, next) => {
+  if (req.method === 'POST' && (req.path === '/' || req.path === '/api/jetblog')) {
+    let data = '';
+    req.on('data', chunk => { data += chunk.toString(); });
+    req.on('end', () => { req.rawBody = data; next(); });
+  } else {
+    next();
+  }
 });
 
 app.use(express.json());
@@ -85,16 +89,36 @@ app.get('/api/posts/:slug', (req, res) => {
 // ── Webhook ───────────────────────────────────────────────────────────────────
 app.get('/api/jetblog', (_req, res) => res.json({ status: 'JetBlog webhook active' }));
 
-app.post('/api/jetblog', (req, res) => {
+app.post(['/', '/api/jetblog'], (req, res) => {
   const sig = req.headers['x-jetblog-signature'];
-  if (!sig) return res.status(401).json({ error: 'Missing signature' });
-  if (!verifySig(req.rawBody, sig)) return res.status(401).json({ error: 'Invalid signature' });
+  const method = req.method;
+  const path = req.path;
+
+  console.log(`[Incoming POST] Method: ${method}, Path: ${path}`);
+
+  if (!sig) {
+    console.log(`[Incoming POST] Signature verification: FAILED (Missing signature header)`);
+    return res.status(401).json({ error: 'Missing signature' });
+  }
+
+  const isVerified = verifySig(req.rawBody || '', sig);
+  console.log(`[Incoming POST] Signature verification: ${isVerified ? 'SUCCESS' : 'FAILED'}`);
+
+  if (!isVerified) {
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
 
   let payload;
-  try { payload = JSON.parse(req.rawBody); } catch { return res.status(400).json({ error: 'Invalid JSON' }); }
+  try {
+    payload = JSON.parse(req.rawBody);
+  } catch {
+    console.log(`[Incoming POST] JSON parse: FAILED`);
+    return res.status(400).json({ error: 'Invalid JSON' });
+  }
 
   if (payload.event === 'article.published' && payload.data) {
     const { title = 'Untitled', content = '', featuredImageUrl, seoTitle, seoDescription, tags } = payload.data;
+    console.log(`[Incoming POST] Article title: "${title}"`);
     const slug = generateSlug(title);
     const plain = stripHtml(content);
     const post = {
@@ -109,10 +133,20 @@ app.post('/api/jetblog', (req, res) => {
       createdAt: new Date().toISOString(),
       excerpt: plain.substring(0, 150) + (plain.length > 150 ? '...' : ''),
     };
-    try { savePost(post); console.log(`✅ Published: "${title}" → /blog/${slug}`); }
-    catch (e) { console.error('❌ Save failed:', e); return res.status(500).json({ error: 'Save failed' }); }
+    try {
+      savePost(post);
+      console.log(`✅ Published: "${title}" → /blog/${slug}`);
+      return res.json({
+        postId: post.id,
+        url: `/blog/${slug}`
+      });
+    } catch (e) {
+      console.error('❌ Save failed:', e);
+      return res.status(500).json({ error: 'Save failed' });
+    }
   }
 
+  console.log(`[Incoming POST] Event type: "${payload.event}" (not article.published)`);
   return res.json({ received: true });
 });
 
