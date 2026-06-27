@@ -72,6 +72,9 @@ function calcReadTime(html) {
 function verifySig(rawBody, header) {
   const secret = process.env.JETBLOG_SECRET || 'fe76b9e9490158711f3d83fa694366679522bac1048aaadb99cd36b485dfe240';
   const expected = crypto.createHmac('sha256', secret).update(rawBody, 'utf-8').digest('hex');
+  console.log(`[Signature Debug] Secret length: ${secret ? secret.length : 0}`);
+  console.log(`[Signature Debug] Received header: "${header}"`);
+  console.log(`[Signature Debug] Computed signature: "${expected}"`);
   try { return crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(header, 'hex')); } catch { return false; }
 }
 
@@ -96,16 +99,29 @@ app.post(['/', '/api/jetblog'], (req, res) => {
 
   console.log(`[Incoming POST] Method: ${method}, Path: ${path}`);
 
-  if (!sig) {
-    console.log(`[Incoming POST] Signature verification: FAILED (Missing signature header)`);
-    return res.status(401).json({ error: 'Missing signature' });
-  }
+  const skipCheck = process.env.SKIP_SIGNATURE_CHECK === 'true';
+  let isVerified = false;
 
-  const isVerified = verifySig(req.rawBody || '', sig);
-  console.log(`[Incoming POST] Signature verification: ${isVerified ? 'SUCCESS' : 'FAILED'}`);
+  if (skipCheck) {
+    console.log(`[Incoming POST] SKIP_SIGNATURE_CHECK is enabled. Bypassing signature verification.`);
+    if (sig) {
+      verifySig(req.rawBody || '', sig);
+    } else {
+      console.log(`[Incoming POST] No signature header received, but bypassing.`);
+    }
+    isVerified = true;
+  } else {
+    if (!sig) {
+      console.log(`[Incoming POST] Signature verification: FAILED (Missing signature header)`);
+      return res.status(401).json({ error: 'Missing signature' });
+    }
 
-  if (!isVerified) {
-    return res.status(401).json({ error: 'Invalid signature' });
+    isVerified = verifySig(req.rawBody || '', sig);
+    console.log(`[Incoming POST] Signature verification: ${isVerified ? 'SUCCESS' : 'FAILED'}`);
+
+    if (!isVerified) {
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
   }
 
   let payload;
